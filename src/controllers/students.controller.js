@@ -98,7 +98,10 @@ export const getStudents = async (req, res) => {
         sections = sections
             ? sections.split(",")
             : [];
-        limit = Number(limit);
+        let isAll = limit === "all";
+
+        limit = isAll ? null : Number(limit);
+        // limit = Number(limit);
         skip = Number(skip);
 
         // ✅ frontend accessor -> DB column
@@ -180,19 +183,35 @@ export const getStudents = async (req, res) => {
         }
         if (country) {
 
-            queryParams.push(country);
+            const countries = country
+                .split(",")
+                .map((c) => c.trim())
+                .filter(Boolean);
 
-            conditions.push(
-                `country = $${queryParams.length}`
-            );
+            if (countries.length) {
+
+                queryParams.push(countries);
+
+                conditions.push(
+                    `country = ANY($${queryParams.length})`
+                );
+            }
         }
         if (city) {
 
-            queryParams.push(city);
+            const cities = city
+                .split(",")
+                .map((c) => c.trim())
+                .filter(Boolean);
 
-            conditions.push(
-                `city = $${queryParams.length}`
-            );
+            if (cities.length) {
+
+                queryParams.push(cities);
+
+                conditions.push(
+                    `city = ANY($${queryParams.length})`
+                );
+            }
         }
 
         // ==============================
@@ -226,7 +245,7 @@ export const getStudents = async (req, res) => {
         `;
 
         // ✅ apply pagination only if limit > 0
-        if (limit > 0) {
+        if (!isAll) {
 
             const limitIndex =
                 queryParams.length + 1;
@@ -513,6 +532,50 @@ export const getCountries = async (req, res) => {
             "❌ Get Countries Error:",
             error.message
         );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+        });
+    }
+};
+export const getCities = async (req, res) => {
+    try {
+        let { country } = req.query;
+
+        // normalize input → always array
+        if (!country) {
+            return res.status(200).json({
+                success: true,
+                total: 0,
+                options: [],
+            });
+        }
+
+        const countryList = Array.isArray(country)
+            ? country
+            : country.split(","); // "India,USA"
+
+        const result = await neonQuery(`
+            SELECT DISTINCT city
+            FROM students
+            WHERE country = ANY($1)
+              AND city IS NOT NULL
+            ORDER BY city ASC
+        `, [countryList]);
+
+        const cities = result.rows.map(
+            (item) => item.city
+        );
+
+        return res.status(200).json({
+            success: true,
+            total: cities.length,
+            options: cities,
+        });
+
+    } catch (error) {
+        console.error("❌ Get Cities Error:", error.message);
 
         return res.status(500).json({
             success: false,
